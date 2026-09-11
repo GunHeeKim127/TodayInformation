@@ -1,0 +1,246 @@
+:root {
+  --bg-main: #0a0a0c;
+  --panel-bg: #101216;
+  --panel-border: #1f242d;
+  --terminal-amber: #ffb000;
+  --terminal-green: #00ff66;
+  --terminal-red: #ff3366;
+  --terminal-blue: #00e5ff;
+  --text-muted: #6b7280;
+
+  --amber-glow: 0 0 8px rgba(255, 176, 0, 0.4);
+  --green-glow: 0 0 8px rgba(0, 255, 102, 0.4);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--terminal-amber);
+  font-family: 'Courier New', Courier, monospace;
+  min-height: 100vh;
+  padding: 20px 12px;
+  display: flex;
+  justify-content: center;
+}
+
+/* CRT 모니터 전체 프레임 */
+.crt-terminal {
+  width: 100%;
+  max-width: 1000px;
+  background-color: var(--panel-bg);
+  border: 2px solid var(--panel-border);
+  border-radius: 8px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.8), inset 0 0 15px rgba(255, 176, 0, 0.05);
+  overflow: hidden;
+}
+
+/* 터미널 상단 헤더 */
+.terminal-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 14px;
+  background-color: #050608;
+  border-bottom: 2px solid var(--panel-border);
+  font-size: 0.78rem;
+  font-weight: bold;
+}
+
+.terminal-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.dot.red { background-color: var(--terminal-red); }
+.dot.yellow { background-color: var(--terminal-amber); }
+.dot.green { background-color: var(--terminal-green); }
+
+.cli-container {
+  padding: 20px;
+}
+
+/* 상단 메인 전광판 */
+.hero-section {
+  background-color: #030405;
+  border: 1px solid var(--terminal-green);
+  box-shadow: inset 0 0 12px rgba(0, 255, 102, 0.08);
+  border-radius: 6px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+  margin-bottom: 12px;
+}
+
+.status-tag {
+  color: var(--terminal-green);
+  font-weight: bold;
+  text-shadow: var(--green-glow);
+}
+
+.status-tag.stale {
+  color: var(--terminal-red);
+  text-shadow: 0 0 8px rgba(255, 51, 102, 0.5);
+}
+
+.hero-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.hero-display {
+  flex: 1;
+}
+
+.hero-value {
+  font-size: 3.2rem;
+  font-weight: 900;
+  color: var(--terminal-green);
+  text-shadow: var(--green-glow);
+  line-height: 1;
+}
+
+.hero-unit {
+  font-size: 1rem;
+  color: var(--terminal-blue);
+  margin-top: 4px;
+}
+
+.hero-diff {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 2px 8px;
+  background: rgba(0, 229, 255, 0.1);
+  border: 1px solid var(--terminal-blue);
+  color: var(--terminal-blue);
+  font-size: 0.82rem;
+}
+
+.blink-cursor {
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  width: 320px;
+}
+
+.meta-box {
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--panel-border);
+  padding: 6px 10px;
+}
+
+.meta-label {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.meta-val {
+  font-size: 0.78rem;
+  color: var(--terminal-amber);
+}
+
+.meta-val a {
+  color: var(--terminal-blue);
+  text-decoration: none;
+}
+
+/* 하단 2열 검증 & 문서 패널 */
+.split-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.section-header {
+  font-size: 0.8rem;
+  color: var(--terminal-blue);
+  font-weight: bold;
+  margin: 0 0 10px 0;
+  border-left: 3px solid var(--terminal-blue);
+  padding-left: 8px;
+}
+
+.cli-btn-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.cli-btn {
+  padding: 8px;
+  background-color: #12151c;
+  border: 1px solid var(--panel-border);
+  color: var(--terminal-amber);
+  font-family: monospace;
+  font-size: 0.72rem;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.cli-btn:hover {
+  border-color: var(--terminal-amber);
+  background-color: rgba(255, 176, 0, 0.1);
+}
+
+.cli-btn-recover {
+  grid-column: span 3;
+  background-color: #042f1d;
+  border-color: var(--terminal-green);
+  color: var(--terminal-green);
+  font-size: 0.8rem;
+  padding: 10px;
+  text-shadow: var(--green-glow);
+}
+
+.cli-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  margin-bottom: 12px;
+}
+
+.cli-table th, .cli-table td {
+  border: 1px solid var(--panel-border);
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.cli-table th {
+  background-color: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+}
+
+.cli-doc {
+  background-color: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--panel-border);
+  padding: 10px;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--terminal-amber);
+  margin-bottom: 12px;
+}
