@@ -9,6 +9,14 @@ function formatDateStr(date: Date): string {
   return `${y}${m}${d}`;
 }
 
+function formatDateISO(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+// 한국수출입은행 단일 날짜 조회 함수
 async function fetchKoreaEximSingle(searchDateStr: string) {
   if (!KOREAEXIM_AUTH_KEY) return null;
 
@@ -90,7 +98,7 @@ export async function GET(request: Request) {
     );
   }
 
-  // [T04-RECOVER-D2] 정상 복구 및 D2 날짜 기록 추가 시뮬레이션
+  // [T04-RECOVER-D2] 정상 복구 테스트용 Mock 데이터
   if (fixture === "T04-RECOVER-D2") {
     return NextResponse.json({
       status: "success",
@@ -104,62 +112,112 @@ export async function GET(request: Request) {
         timezone: "Asia/Seoul",
         rawJsonStr: JSON.stringify({ deal_bas_r: "1,385.50", cur_unit: "USD" }),
       },
+      previousData: {
+        value: 1370.00,
+        unit: "KRW / USD",
+        sourceName: "한국수출입은행 환율 정보",
+        sourceUrl: "https://www.koreaexim.go.kr",
+        sourceTime: "2026-09-10 11:00:00",
+        fetchedTime: "2026-09-10 15:30:00",
+        timezone: "Asia/Seoul",
+        rawJsonStr: JSON.stringify({ deal_bas_r: "1,370.00", cur_unit: "USD" }),
+      }
     });
   }
 
   // ==========================================
-  // [카드 1, 4, 5] 실제 원천 조회 및 이틀 기록 수집
+  // [핵심 개편] 2일치 영업일 데이터를 찾을 때까지 과거로 계속 탐색하는 로직
   // ==========================================
   const nowTimeStr = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Seoul" });
   const today = new Date();
   const fetchedList: any[] = [];
 
-  for (let i = 0; i < 7; i++) {
+  // 주말, 공휴일, 연휴를 감안하여 최근 14일 전까지 루프 탐색
+  for (let i = 0; i < 14; i++) {
     const targetDate = new Date(today);
     targetDate.setDate(today.getDate() - i);
     const searchDateStr = formatDateStr(targetDate);
 
     const data = await fetchKoreaEximSingle(searchDateStr);
+    
+    // 영업일 데이터가 존재할 때만 리스트에 추가
     if (data) {
       fetchedList.push({
         ...data,
         fetchedTime: nowTimeStr,
         timezone: "Asia/Seoul",
       });
-      if (fetchedList.length >= 2) break; // 어제/오늘 2일치 수집
+
+      // 2일치가 모두 채워지면 더 이상 탐색하지 않고 종료
+      if (fetchedList.length >= 2) {
+        break;
+      }
     }
   }
 
-  if (fetchedList.length > 0) {
+  // 1) 한국수출입은행 API로 2일치를 모두 확보했을 경우
+  if (fetchedList.length >= 2) {
     return NextResponse.json({
       status: "success",
-      data: fetchedList[0],
-      previousData: fetchedList.length > 1 ? fetchedList[1] : null,
+      data: fetchedList[0],         // 가장 최근 영업일
+      previousData: fetchedList[1], // 바로 직전 영업일 (이전 데이터)
     });
   }
 
-  // 폴백 백업 (오픈 API)
+  // 2) 만약 한국수출입은행 API에서 1개만 구했거나 실패했을 경우, 오픈 API(Frankfurter)로 과거 10일 범위 조회
   try {
-    const res = await fetch("https://api.frankfurter.app/latest?from=USD&to=KRW", { cache: "no-store" });
+    const endDate = formatDateISO(today);
+    const startDateObj = new Date(today);
+    startDateObj.setDate(today.getDate() - 10);
+    const startDate = formatDateISO(startDateObj);
+
+    // 기간 범위 조회 API 호출
+    const res = await fetch(`https://api.frankfurter.app/${startDate}..${endDate}?from=USD&to=KRW`, { cache: "no-store" });
+    
     if (res.ok) {
-      const data = await res.json();
-      if (data?.rates?.KRW) {
+      const json = await res.json();
+      const ratesObj = json.rates || {};
+      const dates = Object.keys(ratesObj).sort(); // 오름차순 (과거 -> 최근)
+
+      if (dates.length >= 2) {
+        const latestDate = dates[dates.length - 1];
+        const prevDate = dates[dates.length - 2];
+
         return NextResponse.json({
           status: "success",
           data: {
-            value: data.rates.KRW,
+            value: ratesObj[latestDate].KRW,
             unit: "KRW / USD",
             sourceName: "ECB Exchange Rates (Fallback)",
             sourceUrl: "https://www.frankfurter.app",
-            sourceTime: `${data.date} 00:00:00`,
+            sourceTime: `${latestDate} 00:00:00`,
             fetchedTime: nowTimeStr,
             timezone: "Asia/Seoul",
-            rawJsonStr: JSON.stringify(data),
+            rawJsonStr: JSON.stringify({ date: latestDate, rate: ratesObj[latestDate] }),
           },
+          previousData: {
+            value: ratesObj[prevDate].KRW,
+            unit: "KRW / USD",
+            sourceName: "ECB Exchange Rates (Fallback)",
+            sourceUrl: "https://www.frankfurter.app",
+            sourceTime: `${prevDate} 00:00:00`,
+            fetchedTime: nowTimeStr,
+            timezone: "Asia/Seoul",
+            rawJsonStr: JSON.stringify({ date: prevDate, rate: ratesObj[prevDate] }),
+          }
         });
       }
     }
   } catch {}
+
+  // 3) 만약 1개만 구해졌더라도 없는 것보단 낫다면 리턴
+  if (fetchedList.length === 1) {
+    return NextResponse.json({
+      status: "success",
+      data: fetchedList[0],
+      previousData: null
+    });
+  }
 
   return NextResponse.json(
     { error_code: "ERR_TIMEOUT", message: "모든 외부 원천 응답 수신 실패" },

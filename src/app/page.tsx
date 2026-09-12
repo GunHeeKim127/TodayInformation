@@ -20,7 +20,7 @@ export default function LabConsolePage() {
   const [errorCode, setErrorCode] = useState<string>("none");
   const [errorMessage, setErrorMessage] = useState<string>("");
 
-  // KST 날짜(YYYY-MM-DD)를 키로 저장하는 일별 기록 Map (카드 4, 카드 5)
+  // KST 날짜(YYYY-MM-DD) 키 기반 일별 기록 저장소
   const [dailyHistory, setDailyHistory] = useState<Record<string, MetricRecord>>({});
 
   const fetchMetricData = useCallback(async (fixtureName?: string, signal?: AbortSignal) => {
@@ -30,7 +30,7 @@ export default function LabConsolePage() {
       const json = await res.json();
 
       if (!res.ok) {
-        // [T04-C17, T04-C18] 실패하더라도 기존 lastKnownMetric은 지워지지 않고 stale 상태 및 오래된 값 표기 적용
+        // [T04-C17, T04-C18] 실패 시 기존 값 보존 및 STALE 경고 표시
         setStatus("stale");
         setErrorCode(json.error_code || `ERR_HTTP_${res.status}`);
         setErrorMessage(json.message || "EXTERNAL SOURCE FETCH FAILED");
@@ -44,20 +44,22 @@ export default function LabConsolePage() {
       setErrorCode("none");
       setErrorMessage("");
 
-      // [카드 4 & 카드 5] KST 날짜 키 기반 고유 갱신 (같은 날 중복 통합, 다음 날 추가)
-      const newHistory: Record<string, MetricRecord> = {};
+      // [카드 4 & 카드 5] KST 날짜 키 고유 누적 및 중복 통합
+      const newEntries: Record<string, MetricRecord> = {};
+      
       if (data?.sourceTime) {
         const dateKey = data.sourceTime.split(" ")[0];
-        newHistory[dateKey] = data;
+        newEntries[dateKey] = data;
       }
+      
       if (json.previousData?.sourceTime) {
         const prevDateKey = json.previousData.sourceTime.split(" ")[0];
-        newHistory[prevDateKey] = json.previousData;
+        newEntries[prevDateKey] = json.previousData;
       }
 
       setDailyHistory((prev) => ({
         ...prev,
-        ...newHistory,
+        ...newEntries,
       }));
     } catch (err: any) {
       if (err.name === "AbortError") return;
@@ -72,16 +74,20 @@ export default function LabConsolePage() {
     fetchMetricData(undefined, controller.signal);
     return () => controller.abort();
   }, [fetchMetricData]);
-
+ 
   // 실패 시에도 마지막 정상 저장값을 유지하여 화면에 뿌려줌
   const activeMetric = status === "fresh" ? currentMetric : lastKnownMetric;
 
-  // [카드 5] 날짜순 정렬 및 어제 대비(PREV_DAY_DIFF) 재계산
-  const historyDates = Object.keys(dailyHistory).sort();
-  const hasTwoDays = historyDates.length >= 2;
-  const diffVal = hasTwoDays
-    ? dailyHistory[historyDates[historyDates.length - 1]].value - dailyHistory[historyDates[0]].value
-    : 0;
+  // [카드 5] 날짜 오름차순 정렬 및 어제 대비(PREV_DAY_DIFF) 정확 재계산
+  const sortedDates = Object.keys(dailyHistory).sort(); // [과거, ..., 최신]
+  const hasTwoDays = sortedDates.length >= 2;
+  
+  let diffVal = 0;
+  if (hasTwoDays) {
+    const latestRecord = dailyHistory[sortedDates[sortedDates.length - 1]];
+    const prevRecord = dailyHistory[sortedDates[sortedDates.length - 2]]; // 바로 전일자 기록 대조
+    diffVal = Number((latestRecord.value - prevRecord.value).toFixed(2));
+  }
 
   return (
     <div className="crt-terminal">
@@ -213,7 +219,7 @@ export default function LabConsolePage() {
 
           {/* RIGHT COLUMN */}
           <div>
-            {/* [카드 4 & 카드 5] 일별 고유 기록 및 이틀 환율 내역 (C20~C24) */}
+            {/* [카드 4 & 카드 5] 일별 고유 기록 및 이틀 환율 내역 (C22~C24) */}
             <div className="section-header">&gt; CARD_05: RECORD_LOGS (C22~C24)</div>
             <table className="cli-table">
               <thead>
@@ -225,8 +231,8 @@ export default function LabConsolePage() {
                 </tr>
               </thead>
               <tbody>
-                {historyDates.length > 0 ? (
-                  historyDates.map((dateKey) => {
+                {sortedDates.length > 0 ? (
+                  sortedDates.map((dateKey) => {
                     const item = dailyHistory[dateKey];
                     return (
                       <tr key={dateKey}>
