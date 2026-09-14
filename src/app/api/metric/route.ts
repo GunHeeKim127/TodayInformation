@@ -18,11 +18,15 @@ function formatDateISO(date: Date): string {
 
 // 한국수출입은행 단일 날짜 조회 함수
 async function fetchKoreaEximSingle(searchDateStr: string) {
-  if (!KOREAEXIM_AUTH_KEY) return null;
+  if (!KOREAEXIM_AUTH_KEY) {
+    console.log("❌ [KOREAEXIM] AUTH_KEY가 설정되지 않았습니다. (.env.local 확인 필요)");
+    return null;
+  }
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1500);
+    // 타임아웃을 1.5초에서 3.5초로 늘려 응답 지연 시 조기 종료 방지
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
 
     const apiUrl = `https://www.koreaexim.go.kr/site/program/financial/exchangeJSON?authkey=${KOREAEXIM_AUTH_KEY}&searchdate=${searchDateStr}&data=AP01`;
 
@@ -30,7 +34,7 @@ async function fetchKoreaEximSingle(searchDateStr: string) {
       cache: "no-store",
       signal: controller.signal,
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "application/json",
       },
     });
@@ -39,6 +43,8 @@ async function fetchKoreaEximSingle(searchDateStr: string) {
 
     if (res.ok) {
       const rawList = await res.json();
+      console.log(`🔍 [KOREAEXIM] ${searchDateStr} 응답 데이터 개수:`, Array.isArray(rawList) ? rawList.length : typeof rawList);
+
       if (Array.isArray(rawList) && rawList.length > 0) {
         const usdItem = rawList.find((item: any) => item.cur_unit === "USD");
         if (usdItem?.deal_bas_r) {
@@ -53,8 +59,11 @@ async function fetchKoreaEximSingle(searchDateStr: string) {
           };
         }
       }
+    } else {
+      console.log(`⚠️ [KOREAEXIM] ${searchDateStr} HTTP 응답 오류 status:`, res.status);
     }
-  } catch {
+  } catch (err: any) {
+    console.log(`💥 [KOREAEXIM] ${searchDateStr} Fetch 에러 발생:`, err.message || err);
     return null;
   }
   return null;
@@ -132,6 +141,8 @@ export async function GET(request: Request) {
   const today = new Date();
   const fetchedList: any[] = [];
 
+  console.log("🚀 [API START] 환율 탐색 루프를 시작합니다. (오늘 날짜:", formatDateStr(today), ")");
+
   // 주말, 공휴일, 연휴를 감안하여 최근 14일 전까지 루프 탐색
   for (let i = 0; i < 14; i++) {
     const targetDate = new Date(today);
@@ -139,7 +150,7 @@ export async function GET(request: Request) {
     const searchDateStr = formatDateStr(targetDate);
 
     const data = await fetchKoreaEximSingle(searchDateStr);
-    
+
     // 영업일 데이터가 존재할 때만 리스트에 추가
     if (data) {
       fetchedList.push({
@@ -157,12 +168,15 @@ export async function GET(request: Request) {
 
   // 1) 한국수출입은행 API로 2일치를 모두 확보했을 경우
   if (fetchedList.length >= 2) {
+    console.log("✅ [KOREAEXIM] 2일치 환율 수집 성공!");
     return NextResponse.json({
       status: "success",
       data: fetchedList[0],         // 가장 최근 영업일
-      previousData: fetchedList[1], // 바로 직전 영업일 (이전 데이터)
+      previousData: fetchedList[1], // 바로 직전 영업일
     });
   }
+
+  console.log("⚠️ [FALLBACK] 수출입은행 데이터 부족 (확보 수:", fetchedList.length, "개). Frankfurter 오픈 API로 대체 시도 중...");
 
   // 2) 만약 한국수출입은행 API에서 1개만 구했거나 실패했을 경우, 오픈 API(Frankfurter)로 과거 10일 범위 조회
   try {
@@ -173,7 +187,7 @@ export async function GET(request: Request) {
 
     // 기간 범위 조회 API 호출
     const res = await fetch(`https://api.frankfurter.app/${startDate}..${endDate}?from=USD&to=KRW`, { cache: "no-store" });
-    
+
     if (res.ok) {
       const json = await res.json();
       const ratesObj = json.rates || {};
@@ -208,7 +222,9 @@ export async function GET(request: Request) {
         });
       }
     }
-  } catch {}
+  } catch (e: any) {
+    console.log("💥 [FALLBACK ERROR]", e.message || e);
+  }
 
   // 3) 만약 1개만 구해졌더라도 없는 것보단 낫다면 리턴
   if (fetchedList.length === 1) {
